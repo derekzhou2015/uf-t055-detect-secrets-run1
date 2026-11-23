@@ -39,7 +39,7 @@ class TestScanFile:
     @staticmethod
     def test_error_reading_file(mock_log_warning):
         with mock.patch(
-            'detect_secrets.core.scan.open',
+            'detect_secrets.core.scan.read_text_lines',
             side_effect=IOError,
         ):
             SecretsCollection().scan_file('test_data/config.env')

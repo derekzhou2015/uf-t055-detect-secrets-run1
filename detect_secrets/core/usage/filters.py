@@ -77,6 +77,16 @@ def add_filter_options(parent: argparse.ArgumentParser) -> None:
             type=float,
             help='Threshold to determine whether a string is gibberish.',
         )
+        parser.add_argument(
+            '--use-gibberish',
+            action='store_true',
+            help=(
+                'Enables the gibberish false-positive filter. This filter is opt-in: '
+                'it is only applied when this flag (or --gibberish-model/--gibberish-limit) '
+                'is provided, so command-line and library scans use the same default '
+                'set of filters.'
+            ),
+        )
 
     _add_custom_filters(parser)
     _add_disable_flag(parser)
@@ -158,7 +168,23 @@ def parse_args(args: argparse.Namespace) -> None:
     ):
         filters.wordlist.initialize(args.word_list_file)
 
-    if filters.gibberish.is_feature_enabled():
+    # The gibberish filter is an *opt-in* false-positive reduction mechanism. Previously it
+    # was enabled automatically whenever the optional `gibberish-detector` package was
+    # installed, which made command-line scans silently drop hits that library scans still
+    # reported (the two entry points use the same scanning kernel, but only the command line
+    # assembled this extra filter). It is now enabled only on explicit request, keeping the
+    # default filter set identical across both entry points. Supplying a custom model or
+    # limit also counts as an explicit request, since those flags only make sense when the
+    # filter is active.
+    use_gibberish = (
+        filters.gibberish.is_feature_enabled()
+        and getattr(args, 'use_gibberish', False)
+    )
+    custom_gibberish_config = bool(
+        getattr(args, 'gibberish_model_file', None)
+        or getattr(args, 'gibberish_limit', None),
+    )
+    if use_gibberish or custom_gibberish_config:
         kwargs = {}
         if args.gibberish_model_file:
             kwargs['model_path'] = args.gibberish_model_file

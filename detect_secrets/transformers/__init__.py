@@ -20,6 +20,7 @@ def get_transformed_file(
     file: NamedIO,
     use_eager_transformers: bool = False,
 ) -> Optional[List[str]]:
+    decode_error = None
     for transformer in get_transformers():
         if not transformer.should_parse_file(file.name):
             continue
@@ -31,8 +32,19 @@ def get_transformed_file(
             return transformer.parse_file(file)
         except ParsingError:
             pass
+        except UnicodeDecodeError as error:
+            # A single transformer may not be able to decode the file (e.g. a legacy
+            # encoding). Don't discard the whole file because of it: let the other
+            # transformers, and ultimately the raw line reader, have a chance instead.
+            decode_error = error
         finally:
             file.seek(0)
+
+    if decode_error is not None:
+        # Every applicable transformer failed to decode the file. Re-raise so the
+        # caller can apply its binary-file handling, rather than silently returning
+        # nothing and dropping the file's secrets.
+        raise decode_error
 
     return None
 

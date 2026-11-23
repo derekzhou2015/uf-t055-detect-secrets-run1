@@ -14,11 +14,11 @@ from ..settings import get_filters
 from ..settings import get_plugins
 from ..settings import get_settings
 from ..transformers import get_transformed_file
-from ..types import NamedIO
 from ..types import SelfAwareCallable
 from ..util import git
 from ..util.code_snippet import CodeSnippet
 from ..util.code_snippet import get_code_snippet
+from ..util.encoding import read_text_lines
 from ..util.inject import call_function_with_arguments
 from ..util.path import get_relative_path
 from .log import log
@@ -258,22 +258,30 @@ def _get_lines_from_file(filename: str) -> Generator[List[str], None, None]:
     :raises: IOError
     :raises: FileNotFoundError
     """
-    with open(filename) as f:
+    try:
+        # Read with UTF-8 first (falling back to the locale encoding for legacy text
+        # files). Binary files raise UnicodeDecodeError here and are ignored below.
+        f, raw_lines = read_text_lines(filename)
+    except UnicodeDecodeError:
+        # We flat out ignore binary files
+        return
+
+    with f:
         log.info(f'Checking file: {filename}')
 
         try:
-            lines = get_transformed_file(cast(NamedIO, f))
+            lines = get_transformed_file(f)
             if not lines:
-                lines = f.readlines()
+                lines = raw_lines
         except UnicodeDecodeError:
-            # We flat out ignore binary files
+            # Defensive: a transformer may still fail on an unusual encoding.
             return
 
         yield lines
 
         # If the above lines don't prove to be useful to the caller, try using eager transformers.
         f.seek(0)
-        lines = get_transformed_file(cast(NamedIO, f), use_eager_transformers=True)
+        lines = get_transformed_file(f, use_eager_transformers=True)
         if not lines:
             return
 
